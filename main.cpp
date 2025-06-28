@@ -21,18 +21,11 @@ static void init(void) {
     /* create shader from code-generated sg_shader_desc */
     sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
 
-    /* a vertex buffer with 3 vertices */
     float vertices[] = {
-        // positions
-        -0.5f, -0.5f, 0.0f,     // bottom left
-        0.5f, -0.5f, 0.0f,      // bottom right
-        0.0f,  0.5f, 0.0f,      // top
-    };
-
-    float colors[] = {
-        1.0f, 0.0f, 0.0f,       // bottom left
-        0.0f, 1.0f, 0.0f,       // bottom right
-        0.0f, 0.0f, 1.0f        // top
+        // positions            // colors
+        0.5f, -0.5f, 0.0f,      1.0f, 0.0f, 0.0f,   // bottom right
+        -0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,  // bottom left
+        0.0f,  0.5f, 0.0f,      0.0f, 0.0f, 1.0f    // top
     };
 
     // vertex buffer
@@ -41,17 +34,12 @@ static void init(void) {
     buf_desc.data = SG_RANGE(vertices);
     buf_desc.label = "triangle-vertices";
     state.bind.vertex_buffers[0] = sg_make_buffer(&buf_desc);
-    // color buffer
-    sg_buffer_desc color_buf_desc = {};
-    color_buf_desc.size = sizeof(vertices);
-    color_buf_desc.data = SG_RANGE(vertices);
-    color_buf_desc.label = "triangle-vertices";
-    state.bind.vertex_buffers[1] = sg_make_buffer(&color_buf_desc);
 
     // Create pipeline descriptor
     sg_pipeline_desc pip_desc = {};
     pip_desc.shader = shd;
     pip_desc.layout.attrs[ATTR_simple_position].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_simple_aColor].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.label = "triangle-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
