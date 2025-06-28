@@ -23,9 +23,9 @@ static void init(void) {
 
     float vertices[] = {
         // positions            // colors
+        0.5f,  0.5f, 0.0f,      0.0f, 0.0f, 1.0f,    // top right
         0.5f, -0.5f, 0.0f,      1.0f, 0.0f, 0.0f,   // bottom right
         -0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,  // bottom left
-        0.5f,  0.5f, 0.0f,      0.0f, 0.0f, 1.0f,    // top right
         -0.5f,  0.5f, 0.0f,      1.0f, 0.0f, 1.0f    // top left
     };
 
@@ -33,15 +33,29 @@ static void init(void) {
     sg_buffer_desc buf_desc = {};
     buf_desc.size = sizeof(vertices);
     buf_desc.data = SG_RANGE(vertices);
-    buf_desc.label = "triangle-vertices";
+    buf_desc.label = "quad-vertices";
     state.bind.vertex_buffers[0] = sg_make_buffer(&buf_desc);
+
+    u_int16_t indices[] = {
+        0, 1, 3,   // first triangle
+        1, 2, 3    // second triangle
+    };
+
+    sg_buffer_desc ibuf_desc = {};
+    ibuf_desc.size = sizeof(indices);
+    ibuf_desc.data = SG_RANGE(indices);
+    ibuf_desc.label = "quad-indices";
+    ibuf_desc.usage.vertex_buffer = false;
+    ibuf_desc.usage.index_buffer = true;
+    state.bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
     // Create pipeline descriptor
     sg_pipeline_desc pip_desc = {};
     pip_desc.shader = shd;
+    pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.layout.attrs[ATTR_simple_position].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aColor].format = SG_VERTEXFORMAT_FLOAT3;
-    pip_desc.label = "triangle-pipeline";
+    pip_desc.label = "quad-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
     // Setup pass action
@@ -59,7 +73,7 @@ void frame(void) {
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
-    sg_draw(0, 3, 1);
+    sg_draw(0, 6, 1);
     sg_end_pass();
     sg_commit();
 }
