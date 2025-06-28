@@ -13,7 +13,7 @@ static struct {
 } state;
 
 static void init(void) {
-    // Create setup descriptor
+    /* create setup descriptor */
     sg_desc desc = {};
     desc.environment = sglue_environment();
     sg_setup(&desc);
@@ -26,15 +26,27 @@ static void init(void) {
         // positions
         -0.5f, -0.5f, 0.0f,     // bottom left
         0.5f, -0.5f, 0.0f,      // bottom right
-        0.0f,  0.5f, 0.0f       // top
+        0.0f,  0.5f, 0.0f,      // top
     };
 
-    // Create buffer descriptor
+    float colors[] = {
+        1.0f, 0.0f, 0.0f,       // bottom left
+        0.0f, 1.0f, 0.0f,       // bottom right
+        0.0f, 0.0f, 1.0f        // top
+    };
+
+    // vertex buffer
     sg_buffer_desc buf_desc = {};
     buf_desc.size = sizeof(vertices);
     buf_desc.data = SG_RANGE(vertices);
     buf_desc.label = "triangle-vertices";
     state.bind.vertex_buffers[0] = sg_make_buffer(&buf_desc);
+    // color buffer
+    sg_buffer_desc color_buf_desc = {};
+    color_buf_desc.size = sizeof(vertices);
+    color_buf_desc.data = SG_RANGE(vertices);
+    color_buf_desc.label = "triangle-vertices";
+    state.bind.vertex_buffers[1] = sg_make_buffer(&color_buf_desc);
 
     // Create pipeline descriptor
     sg_pipeline_desc pip_desc = {};
@@ -84,6 +96,6 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     desc.width = 800;
     desc.height = 600;
     desc.high_dpi = true;
-    desc.window_title = "Triangle - LearnOpenGL";
+    desc.window_title = "learnopengl.com but in sokol";
     return desc;
 }
