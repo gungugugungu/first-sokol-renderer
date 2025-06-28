@@ -13,6 +13,21 @@ pkg_check_modules(XCURSOR REQUIRED xcursor)
 
 add_executable(sokol_renderer main.cpp)
 
+add_custom_command(
+        OUTPUT triangle.glsl.h
+        COMMAND ${CMAKE_SOURCE_DIR}/compile_shaders.sh
+        DEPENDS triangle.glsl
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running shader compilation script"
+)
+
+add_custom_target(
+        compile_shaders ALL
+        DEPENDS triangle.glsl.h
+)
+
+add_dependencies(sokol_renderer compile_shaders)
+
 # Link against the required libraries
 target_link_libraries(sokol_renderer
     PRIVATE
