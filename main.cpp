@@ -1,16 +1,25 @@
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
+#include <iostream>
+#include <vector>
 #include "sokol_app.h"
 #include "sokol_gfx.h"
 #include "sokol_glue.h"
-#include "triangle.glsl.h"
+#include "sokol_fetch.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+// shaders
+#include "mainshader.glsl.h"
 
 /* application state */
 static struct {
     sg_pipeline pip;
     sg_bindings bind;
     sg_pass_action pass_action;
+    uint8_t file_buffer[512 * 1024];
 } state;
+
+static void fetch_callback(const sfetch_response_t*);
 
 static void init(void) {
     /* create setup descriptor */
@@ -22,11 +31,11 @@ static void init(void) {
     sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
 
     float vertices[] = {
-        // positions            // colors
-        0.5f,  0.5f, 0.0f,      0.0f, 0.0f, 1.0f,    // top right
-        0.5f, -0.5f, 0.0f,      1.0f, 0.0f, 0.0f,   // bottom right
-        -0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,  // bottom left
-        -0.5f,  0.5f, 0.0f,      1.0f, 0.0f, 1.0f    // top left
+        // positions         // colors           // texture coords
+        0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // top right
+        0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // bottom right
+        -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // bottom left
+        -0.5f,  0.5f, 0.0f,  1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // top left
     };
 
     // vertex buffer
@@ -55,6 +64,7 @@ static void init(void) {
     pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.layout.attrs[ATTR_simple_position].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aColor].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
     pip_desc.label = "quad-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
@@ -69,7 +79,7 @@ void frame(void) {
     sg_pass pass = {};
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
-    
+
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);

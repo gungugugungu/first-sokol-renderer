@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "starting compilation"
+
 find . -type f -name "*.glsl" | while read -r shader_file; do
     # shader directory
     dir_path=$(dirname "$shader_file")
@@ -8,6 +10,9 @@ find . -type f -name "*.glsl" | while read -r shader_file; do
     # output file name
     output_file="$dir_path/${base_name}.h"
 
-    echo "Compiling: $shader_file -> $output_file"
+    echo "$shader_file -> $output_file"
     ./sokol-shdc --input "$shader_file" --output "$output_file" --slang glsl430
+
+echo "finished compilation"
+
 done
