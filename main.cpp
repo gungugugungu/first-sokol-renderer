@@ -25,6 +25,7 @@ struct AppState {
 };
 
 AppState state;
+int texture_index = 0;
 
 void fetch_callback(const sfetch_response_t* response) {
     if (response->fetched) {
@@ -37,8 +38,8 @@ void fetch_callback(const sfetch_response_t* response) {
             &num_channels, desired_channels);
 
         if (pixels) {
-            // destroy the old image and create a new one with correct dimensions
-            sg_destroy_image(state.bind.images[0]);
+            // Destroy the old image and create a new one with correct dimensions
+            sg_destroy_image(state.bind.images[texture_index]);
             
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
@@ -46,14 +47,16 @@ void fetch_callback(const sfetch_response_t* response) {
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
-            state.bind.images[0] = sg_make_image(&img_desc);
+            state.bind.images[texture_index] = sg_make_image(&img_desc);
             
             stbi_image_free(pixels);
         }
     } else if (response->failed) {
         state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
         state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
+        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
     }
+    texture_index += 1;
 }
 
 void init() {
@@ -61,8 +64,11 @@ void init() {
     desc.environment = sglue_environment();
     sg_setup(&desc);
 
+    // flip images after loading
+    stbi_set_flip_vertically_on_load(true);
+
     sfetch_desc_t fetch_desc = {};
-    fetch_desc.max_requests = 1;
+    fetch_desc.max_requests = 2;
     fetch_desc.num_channels = 1;
     fetch_desc.num_lanes = 1;
     sfetch_setup(&fetch_desc);
@@ -70,23 +76,40 @@ void init() {
     // pre-allocate image handle
     state.bind.images[0] = sg_alloc_image();
 
-    // Create default white texture
-    uint32_t white_pixel = 0xFFFFFFFF;
+    // create default pink texture
+    uint32_t pink_pixel = 0xff00ff;
     sg_image_desc img_desc = {};
     img_desc.width = 1;
     img_desc.height = 1;
     img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    img_desc.data.subimage[0][0].ptr = &white_pixel;
-    img_desc.data.subimage[0][0].size = sizeof(white_pixel);
+    img_desc.data.subimage[0][0].ptr = &pink_pixel;
+    img_desc.data.subimage[0][0].size = sizeof(pink_pixel);
     state.bind.images[0] = sg_make_image(&img_desc);
 
-    // Create sampler
+    // second texture
+    sg_image_desc img_desc_2 = {};
+    img_desc_2.width = 1;
+    img_desc_2.height = 1;
+    img_desc_2.pixel_format = SG_PIXELFORMAT_RGBA8;
+    img_desc_2.data.subimage[0][0].ptr = &pink_pixel;
+    img_desc_2.data.subimage[0][0].size = sizeof(pink_pixel);
+    state.bind.images[1] = sg_make_image(&img_desc_2);
+
+    // create sampler
     sg_sampler_desc sampler_desc = {};
     sampler_desc.min_filter = SG_FILTER_LINEAR;
     sampler_desc.mag_filter = SG_FILTER_LINEAR;
     sampler_desc.wrap_u = SG_WRAP_REPEAT;
     sampler_desc.wrap_v = SG_WRAP_REPEAT;
     state.bind.samplers[0] = sg_make_sampler(&sampler_desc);
+
+    // create sampler
+    sg_sampler_desc sampler_desc_2 = {};
+    sampler_desc_2.min_filter = SG_FILTER_LINEAR;
+    sampler_desc_2.mag_filter = SG_FILTER_LINEAR;
+    sampler_desc_2.wrap_u = SG_WRAP_REPEAT;
+    sampler_desc_2.wrap_v = SG_WRAP_REPEAT;
+    state.bind.samplers[1] = sg_make_sampler(&sampler_desc_2);
 
     float vertices[] = {
         // positions         // colors           // texture coords
@@ -128,6 +151,13 @@ void init() {
 
     sfetch_request_t request = {};
     request.path = "container.jpg";
+    request.callback = fetch_callback;
+    request.buffer.ptr = state.file_buffer.data();
+    request.buffer.size = state.file_buffer.size();
+    sfetch_send(&request);
+
+    request = {};
+    request.path = "awesomeface.png";
     request.callback = fetch_callback;
     request.buffer.ptr = state.file_buffer.data();
     request.buffer.size = state.file_buffer.size();
