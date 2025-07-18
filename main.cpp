@@ -15,9 +15,9 @@
 #pragma message("B32 is defined as: " B32)
 #undef B32
 #endif
-#include "HandmadeMath.h"
+#include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
-#include "include/stb_image.h"
+#include "stb/stb_image.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 
