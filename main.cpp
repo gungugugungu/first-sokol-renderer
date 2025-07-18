@@ -29,6 +29,18 @@ struct AppState {
     sg_pass_action pass_action{};
     std::array<uint8_t, 512 * 1024> file_buffer{};
     HMM_Vec3 cube_positions[10];
+    HMM_Vec3 camera_pos;
+    HMM_Vec3 camera_front;
+    HMM_Vec3 camera_up;
+    uint64_t last_time;
+    uint64_t delta_time;
+    bool mouse_btn;
+    bool first_mouse;
+    float last_x;
+    float last_y;
+    float yaw;
+    float pitch;
+    float fov;
 };
 
 AppState state;
@@ -74,6 +86,17 @@ void init() {
 
     // flip images after loading
     stbi_set_flip_vertically_on_load(true);
+
+    sapp_show_mouse(false);
+
+    state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
+    state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
+    state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
+    state.yaw = -90.0f;  // Start looking down the negative Z axis
+    state.pitch = 0.0f;
+    state.first_mouse = true;
+    state.last_time = stm_now();
+    state.fov = 45.0f;
 
     state.cube_positions[0] = HMM_V3( 0.0f,  0.0f,  0.0f);
     state.cube_positions[1] = HMM_V3( 2.0f,  5.0f, -15.0f);
@@ -193,15 +216,15 @@ void init() {
 }
 
 void frame(void) {
+    state.delta_time = stm_laptime(&state.last_time);
     sfetch_dowork();
     sg_pass pass = {};
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake from github
-    HMM_Mat4 view = HMM_Translate(HMM_V3(0.0f, 0.0f, -3.0f));
-
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(45.0f, sapp_width() / sapp_height(), 0.1f, 100.0f);
+    HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
 
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
@@ -211,8 +234,6 @@ void frame(void) {
         .view = view,
         .projection = projection
     };
-    
-    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
     for(size_t i = 0; i < 10; i++) {
         HMM_Mat4 model = HMM_Translate(state.cube_positions[i]);
@@ -233,10 +254,79 @@ void cleanup(void) {
 }
 
 void event(const sapp_event* e) {
-    if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
+        if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN) {
+        state.mouse_btn = true;
+    } else if (e->type == SAPP_EVENTTYPE_MOUSE_UP) {
+        state.mouse_btn = false;
+    } else if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
         if (e->key_code == SAPP_KEYCODE_ESCAPE) {
             sapp_request_quit();
         }
+
+        if (e->key_code == SAPP_KEYCODE_SPACE) {
+            bool mouse_shown = sapp_mouse_shown();
+            sapp_show_mouse(!mouse_shown);
+        }
+
+        float camera_speed = 5.f * (float) stm_sec(state.delta_time);
+
+        if (e->key_code == SAPP_KEYCODE_W) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+        if (e->key_code == SAPP_KEYCODE_S) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (e->key_code == SAPP_KEYCODE_A) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (e->key_code == SAPP_KEYCODE_D) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+    }
+    else if (e->type == SAPP_EVENTTYPE_MOUSE_MOVE && state.mouse_btn) {
+        if(state.first_mouse) {
+            state.last_x = e->mouse_x;
+            state.last_y = e->mouse_y;
+            state.first_mouse = false;
+        }
+
+        float xoffset = e->mouse_x - state.last_x;
+        float yoffset = state.last_y - e->mouse_y;
+        state.last_x = e->mouse_x;
+        state.last_y = e->mouse_y;
+
+        float sensitivity = 0.1f;
+        xoffset *= sensitivity;
+        yoffset *= sensitivity;
+
+        state.yaw   += xoffset;
+        state.pitch += yoffset;
+
+        if(state.pitch > 89.0f) {
+            state.pitch = 89.0f;
+        }
+        else if(state.pitch < -89.0f) {
+            state.pitch = -89.0f;
+        }
+
+        HMM_Vec3 direction;
+        direction.X = cosf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
+        direction.Y = sinf(state.pitch * HMM_PI / 180.0f);
+        direction.Z = sinf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
+        state.camera_front = HMM_NormV3(direction);
+    }
+    else if (e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+        if (state.fov >= 1.0f && state.fov <= 45.0f) {
+            state.fov -= e->scroll_y;
+        }
+        if (state.fov <= 1.0f)
+            state.fov = 1.0f;
+        else if (state.fov >= 45.0f)
+            state.fov = 45.0f;
     }
 }
 
