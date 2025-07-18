@@ -16,7 +16,6 @@
 #undef B32
 #endif
 #include "HandmadeMath.h"
-#define LOPGL_APP_IMPL
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
 // shaders
@@ -29,6 +28,7 @@ struct AppState {
     sg_bindings bind{};
     sg_pass_action pass_action{};
     std::array<uint8_t, 512 * 1024> file_buffer{};
+    HMM_Vec3 cube_positions[10];
 };
 
 AppState state;
@@ -74,6 +74,17 @@ void init() {
 
     // flip images after loading
     stbi_set_flip_vertically_on_load(true);
+
+    state.cube_positions[0] = HMM_V3( 0.0f,  0.0f,  0.0f);
+    state.cube_positions[1] = HMM_V3( 2.0f,  5.0f, -15.0f);
+    state.cube_positions[2] = HMM_V3(-1.5f, -2.2f, -2.5f);
+    state.cube_positions[3] = HMM_V3(-3.8f, -2.0f, -12.3f);
+    state.cube_positions[4] = HMM_V3( 2.4f, -0.4f, -3.5f);
+    state.cube_positions[5] = HMM_V3(-1.7f,  3.0f, -7.5f);
+    state.cube_positions[6] = HMM_V3( 1.3f, -2.0f, -2.5f);
+    state.cube_positions[7] = HMM_V3( 1.5f,  2.0f, -2.5f);
+    state.cube_positions[8] = HMM_V3( 1.5f,  0.2f, -1.5f);
+    state.cube_positions[9] = HMM_V3(-1.3f,  1.0f, -1.5f);
 
     sfetch_desc_t fetch_desc = {};
     fetch_desc.max_requests = 2;
@@ -187,8 +198,6 @@ void frame(void) {
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
 
-    HMM_Mat4 model = HMM_Rotate_RH(HMM_AngleRad((float) stm_sec(stm_now())), HMM_V3(0.5f, 1.0f, 0.0f));
-
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake from github
     HMM_Mat4 view = HMM_Translate(HMM_V3(0.0f, 0.0f, -3.0f));
 
@@ -199,14 +208,21 @@ void frame(void) {
     sg_apply_bindings(&state.bind);
 
     vs_params_t vs_params = {
-        .model = model,
         .view = view,
         .projection = projection
     };
     
     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-    sg_draw(0, 36, 1);
+    for(size_t i = 0; i < 10; i++) {
+        HMM_Mat4 model = HMM_Translate(state.cube_positions[i]);
+        float angle = 20.0f * i;
+        model = HMM_MulM4(model, HMM_Rotate_RH(HMM_AngleDeg(angle), HMM_V3(1.0f, 0.3f, 0.5f)));
+        vs_params.model = model;
+        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+        sg_draw(0, 36, 1);
+    }
     sg_end_pass();
     sg_commit();
 }
