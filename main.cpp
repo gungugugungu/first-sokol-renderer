@@ -6,12 +6,19 @@
 #include <string>
 #include <cstring>
 #include <iostream>
-#include "sokol_app.h"
-#include "sokol_gfx.h"
-#include "sokol_glue.h"
-#include "sokol_fetch.h"
+#include "include/sokol_app.h"
+#include "include/sokol_gfx.h"
+#include "include/sokol_glue.h"
+#include "include/sokol_fetch.h"
+#include "sokol_time.h"
+#ifdef B32
+#pragma message("B32 is defined as: " B32)
+#undef B32
+#endif
+#include "HandmadeMath.h"
+#define LOPGL_APP_IMPL
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "include/stb_image.h"
 // shaders
 #include "mainshader.glsl.h"
 
@@ -38,9 +45,9 @@ void fetch_callback(const sfetch_response_t* response) {
             &num_channels, desired_channels);
 
         if (pixels) {
-            // Destroy the old image and create a new one with correct dimensions
+            // yay, memory safety!
             sg_destroy_image(state.bind.images[texture_index]);
-            
+
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
             img_desc.height = img_height;
@@ -63,6 +70,7 @@ void init() {
     sg_desc desc = {};
     desc.environment = sglue_environment();
     sg_setup(&desc);
+    stm_setup();
 
     // flip images after loading
     stbi_set_flip_vertically_on_load(true);
@@ -76,25 +84,6 @@ void init() {
     // pre-allocate image handle
     state.bind.images[0] = sg_alloc_image();
 
-    // create default pink texture
-    uint32_t pink_pixel = 0xff00ff;
-    sg_image_desc img_desc = {};
-    img_desc.width = 1;
-    img_desc.height = 1;
-    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    img_desc.data.subimage[0][0].ptr = &pink_pixel;
-    img_desc.data.subimage[0][0].size = sizeof(pink_pixel);
-    state.bind.images[0] = sg_make_image(&img_desc);
-
-    // second texture
-    sg_image_desc img_desc_2 = {};
-    img_desc_2.width = 1;
-    img_desc_2.height = 1;
-    img_desc_2.pixel_format = SG_PIXELFORMAT_RGBA8;
-    img_desc_2.data.subimage[0][0].ptr = &pink_pixel;
-    img_desc_2.data.subimage[0][0].size = sizeof(pink_pixel);
-    state.bind.images[1] = sg_make_image(&img_desc_2);
-
     // create sampler
     sg_sampler_desc sampler_desc = {};
     sampler_desc.min_filter = SG_FILTER_LINEAR;
@@ -103,7 +92,7 @@ void init() {
     sampler_desc.wrap_v = SG_WRAP_REPEAT;
     state.bind.samplers[0] = sg_make_sampler(&sampler_desc);
 
-    // create sampler
+    // again!!!
     sg_sampler_desc sampler_desc_2 = {};
     sampler_desc_2.min_filter = SG_FILTER_LINEAR;
     sampler_desc_2.mag_filter = SG_FILTER_LINEAR;
@@ -112,38 +101,66 @@ void init() {
     state.bind.samplers[1] = sg_make_sampler(&sampler_desc_2);
 
     float vertices[] = {
-        // positions         // colors           // texture coords
-         0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,
-         0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
-        -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,
-        -0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f,
+        0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 1.0f,
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f,  0.0f, 1.0f
     };
     sg_buffer_desc vbuf_desc = {};
     vbuf_desc.size = sizeof(vertices);
     vbuf_desc.data = SG_RANGE(vertices);
-    vbuf_desc.label = "quad-vertices";
+    vbuf_desc.label = "cube-vertices";
     state.bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
-
-    uint16_t indices[] = { 0, 1, 3, 1, 2, 3 };
-    sg_buffer_desc ibuf_desc = {};
-    ibuf_desc.usage.vertex_buffer = false;
-    ibuf_desc.usage.index_buffer = true;
-    ibuf_desc.size = sizeof(indices);
-    ibuf_desc.data = SG_RANGE(indices);
-    ibuf_desc.label = "quad-indices";
-    state.bind.index_buffer = sg_make_buffer(&ibuf_desc);
 
     sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
 
     sg_pipeline_desc pip_desc = {};
     pip_desc.shader = shd;
-    pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.color_count = 1;
     pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    pip_desc.layout.attrs[ATTR_simple_position].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aColor].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
-    pip_desc.label = "triangle-pipeline";
+    pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    pip_desc.depth.write_enabled = true;
+    pip_desc.label = "cube-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
     state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
@@ -166,15 +183,30 @@ void init() {
 
 void frame(void) {
     sfetch_dowork();
-    // Create pass descriptor
     sg_pass pass = {};
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
 
+    HMM_Mat4 model = HMM_Rotate_RH(HMM_AngleRad((float) stm_sec(stm_now())), HMM_V3(0.5f, 1.0f, 0.0f));
+
+    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake from github
+    HMM_Mat4 view = HMM_Translate(HMM_V3(0.0f, 0.0f, -3.0f));
+
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(45.0f, sapp_width() / sapp_height(), 0.1f, 100.0f);
+
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
-    sg_draw(0, 6, 1);
+
+    vs_params_t vs_params = {
+        .model = model,
+        .view = view,
+        .projection = projection
+    };
+    
+    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+    sg_draw(0, 36, 1);
     sg_end_pass();
     sg_commit();
 }

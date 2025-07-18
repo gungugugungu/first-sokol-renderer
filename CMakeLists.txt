@@ -32,6 +32,7 @@ target_link_libraries(sokol_renderer
 # Include directories
 target_include_directories(sokol_renderer
     PRIVATE
+    include
     ${X11_INCLUDE_DIR}
     ${XCURSOR_INCLUDE_DIRS}
 )

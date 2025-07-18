@@ -1,23 +1,32 @@
+@ctype mat4 HMM_Mat4
+
 @vs vs
-in vec3 position;
+in vec3 aPos;
 in vec3 aColor;
 in vec2 aTexCoord;
 
-out vec3 ourColor;
 out vec2 TexCoord;
+out vec3 ourColor;
+
+layout(binding = 0) uniform vs_params {
+    mat4 model;
+    mat4 view;
+    mat4 projection;
+};
 
 void main() {
-    gl_Position = vec4(position, 1.0);
-    ourColor = aColor;
+    // note that we read the multiplication from right to left
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
+    ourColor = aColor;
 }
 @end
 
 @fs fs
 out vec4 FragColor;
 
-in vec3 ourColor;
 in vec2 TexCoord;
+in vec3 ourColor;
 
 layout(binding = 0) uniform texture2D _texture1;
 layout(binding = 0) uniform sampler texture1_smp;
