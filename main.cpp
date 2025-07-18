@@ -6,11 +6,11 @@
 #include <string>
 #include <cstring>
 #include <iostream>
-#include "include/sokol_app.h"
-#include "include/sokol_gfx.h"
-#include "include/sokol_glue.h"
-#include "include/sokol_fetch.h"
-#include "sokol_time.h"
+#include "sokol/sokol_app.h"
+#include "sokol/sokol_gfx.h"
+#include "sokol/sokol_glue.h"
+#include "sokol/sokol_fetch.h"
+#include "sokol/sokol_time.h"
 #ifdef B32
 #pragma message("B32 is defined as: " B32)
 #undef B32
@@ -19,7 +19,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
 // shaders
-#include "mainshader.glsl.h"
+#include "shaders/mainshader.glsl.h"
 
 using namespace std;
 
