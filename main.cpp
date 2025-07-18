@@ -115,9 +115,6 @@ void init() {
     fetch_desc.num_lanes = 1;
     sfetch_setup(&fetch_desc);
 
-    // pre-allocate image handle
-    state.bind.images[0] = sg_alloc_image();
-
     // create sampler
     sg_sampler_desc sampler_desc = {};
     sampler_desc.min_filter = SG_FILTER_LINEAR;
