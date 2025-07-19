@@ -41,6 +41,7 @@ struct AppState {
     float yaw;
     float pitch;
     float fov;
+    bool inputs[348];
 };
 
 AppState state;
@@ -220,6 +221,24 @@ void frame(void) {
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
 
+    float camera_speed = 5.f * (float) stm_sec(state.delta_time);
+    if (state.inputs[SAPP_KEYCODE_W] == true) {
+        HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+        state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+    }
+    if (state.inputs[SAPP_KEYCODE_S] == true) {
+        HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+        state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+    }
+    if (state.inputs[SAPP_KEYCODE_A] == true) {
+        HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+        state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+    }
+    if (state.inputs[SAPP_KEYCODE_D] == true) {
+        HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+        state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+    }
+
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake from github
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
@@ -251,12 +270,13 @@ void cleanup(void) {
     sfetch_shutdown();
 }
 
-void event(const sapp_event* e) { // TODO: better input handling
+void event(const sapp_event* e) {
         if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN) {
         state.mouse_btn = true;
     } else if (e->type == SAPP_EVENTTYPE_MOUSE_UP) {
         state.mouse_btn = false;
     } else if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
+        state.inputs[e->key_code] = true;
         if (e->key_code == SAPP_KEYCODE_ESCAPE) {
             sapp_request_quit();
         }
@@ -266,24 +286,8 @@ void event(const sapp_event* e) { // TODO: better input handling
             sapp_show_mouse(!mouse_shown);
         }
 
-        float camera_speed = 5.f * (float) stm_sec(state.delta_time);
-
-        if (e->key_code == SAPP_KEYCODE_W) {
-            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
-            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
-        }
-        if (e->key_code == SAPP_KEYCODE_S) {
-            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
-            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
-        }
-        if (e->key_code == SAPP_KEYCODE_A) {
-            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
-            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
-        }
-        if (e->key_code == SAPP_KEYCODE_D) {
-            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
-            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
-        }
+    } else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
+        state.inputs[e->key_code] = false;
     }  else if (e->type == SAPP_EVENTTYPE_MOUSE_MOVE && state.mouse_btn) {
         if(state.first_mouse) {
             state.last_x = e->mouse_x;
