@@ -6,6 +6,7 @@
 #include <string>
 #include <cstring>
 #include <iostream>
+#include <cstdlib>
 #include "sokol/sokol_app.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_glue.h"
@@ -18,6 +19,8 @@
 #include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
+#define CGLTF_IMPLEMENTATION
+#include "cgltf/cgltf.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 
@@ -47,36 +50,171 @@ struct AppState {
 AppState state;
 int texture_index = 0;
 
-void fetch_callback(const sfetch_response_t* response) {
-    if (response->fetched) {
-        int img_width, img_height, num_channels;
-        const int desired_channels = 4;
-        stbi_uc* pixels = stbi_load_from_memory(
-            static_cast<const stbi_uc*>(response->data.ptr),
-            static_cast<int>(response->data.size),
-            &img_width, &img_height,
-            &num_channels, desired_channels);
+void fetch_callback(const sfetch_response_t* response);
 
-        if (pixels) {
-            // yay, memory safety!
-            sg_destroy_image(state.bind.images[texture_index]);
+class Mesh {
+public:
+    // Transform components
+    HMM_Vec3 position = {0.0f, 0.0f, 0.0f};
+    HMM_Quat rotation = {0.0f, 0.0f, 0.0f, 1.0f};  // w=1 identity
+    HMM_Vec3 scale = {1.0f, 1.0f, 1.0f};
 
-            sg_image_desc img_desc = {};
-            img_desc.width = img_width;
-            img_desc.height = img_height;
-            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            img_desc.data.subimage[0][0].ptr = pixels;
-            img_desc.data.subimage[0][0].size = img_width * img_height * 4;
-            state.bind.images[texture_index] = sg_make_image(&img_desc);
-            
-            stbi_image_free(pixels);
-        }
-    } else if (response->failed) {
-        state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-        state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
-        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
+    // Vertex data: interleaved positions (3 floats) and texcoords (2 floats)
+    std::vector<float> vertices;
+
+    // Index data
+    std::vector<unsigned int> indices;
+};
+
+// Helper to decompose matrix into TRS components
+static void decompose_matrix(const float* matrix, HMM_Vec3& position, HMM_Quat& rotation, HMM_Vec3& scale) {
+    // Extract translation
+    position.X = matrix[12];
+    position.Y = matrix[13];
+    position.Z = matrix[14];
+
+    // Extract scale from column lengths
+    HMM_Vec3 col0 = {matrix[0], matrix[1], matrix[2]};
+    HMM_Vec3 col1 = {matrix[4], matrix[5], matrix[6]};
+    HMM_Vec3 col2 = {matrix[8], matrix[9], matrix[10]};
+
+    scale.X = HMM_LenV3(col0);
+    scale.Y = HMM_LenV3(col1);
+    scale.Z = HMM_LenV3(col2);
+
+    // Normalize columns to get rotation matrix
+    if (scale.X > 0.0001f) col0 = HMM_DivV3F(col0, scale.X);
+    if (scale.Y > 0.0001f) col1 = HMM_DivV3F(col1, scale.Y);
+    if (scale.Z > 0.0001f) col2 = HMM_DivV3F(col2, scale.Z);
+
+    // Create rotation matrix and convert to quaternion
+    HMM_Mat4 rot_matrix = {
+        col0.X, col1.X, col2.X, 0,
+        col0.Y, col1.Y, col2.Y, 0,
+        col0.Z, col1.Z, col2.Z, 0,
+        0, 0, 0, 1
+    };
+    rotation = HMM_M4ToQ_LH(rot_matrix); // LH or RH ?????
+}
+
+Mesh load_gltf(const char* path) {
+    Mesh mesh;
+    cgltf_options options = {};
+    cgltf_data* data = nullptr;
+
+    // Parse GLB/GLTF file
+    cgltf_result result = cgltf_parse_file(&options, path, &data);
+    if (result != cgltf_result_success) {
+        return mesh;  // Return empty mesh on failure
     }
-    texture_index += 1;
+
+    // Load buffer data
+    result = cgltf_load_buffers(&options, data, path);
+    if (result != cgltf_result_success) {
+        cgltf_free(data);
+        return mesh;
+    }
+
+    // Find first node with a mesh
+    cgltf_node* target_node = nullptr;
+    for (cgltf_size i = 0; i < data->nodes_count; ++i) {
+        if (data->nodes[i].mesh) {
+            target_node = &data->nodes[i];
+            break;
+        }
+    }
+
+    if (!target_node || !target_node->mesh) {
+        cgltf_free(data);
+        return mesh;
+    }
+
+    // Extract transform from node
+    float matrix[16];
+    if (target_node->has_matrix) {
+        memcpy(matrix, target_node->matrix, sizeof(matrix));
+    } else {
+        cgltf_node_transform_local(target_node, matrix);
+    }
+    decompose_matrix(matrix, mesh.position, mesh.rotation, mesh.scale);
+
+    // Get first primitive from mesh
+    cgltf_primitive* primitive = &target_node->mesh->primitives[0];
+    if (!primitive) {
+        cgltf_free(data);
+        return mesh;
+    }
+
+    // Find position and texcoord accessors
+    cgltf_accessor* pos_accessor = nullptr;
+    cgltf_accessor* tex_accessor = nullptr;
+
+    for (cgltf_size i = 0; i < primitive->attributes_count; ++i) {
+        cgltf_attribute* attr = &primitive->attributes[i];
+        if (attr->type == cgltf_attribute_type_position) {
+            pos_accessor = attr->data;
+        }
+        else if (attr->type == cgltf_attribute_type_texcoord && attr->index == 0) {
+            tex_accessor = attr->data;
+        }
+    }
+
+    if (!pos_accessor) {
+        cgltf_free(data);
+        return mesh;
+    }
+
+    // Extract vertex data
+    const cgltf_size vertex_count = pos_accessor->count;
+    mesh.vertices.reserve(vertex_count * 5);  // 3 pos + 2 uv per vertex
+
+    // Load positions
+    float* positions = (float*)malloc(sizeof(float) * 3 * vertex_count);
+    cgltf_accessor_unpack_floats(pos_accessor, positions, vertex_count * 3);
+
+    // Load texcoords (create default if missing)
+    float* texcoords = nullptr;
+    if (tex_accessor) {
+        texcoords = (float*)malloc(sizeof(float) * 2 * vertex_count);
+        cgltf_accessor_unpack_floats(tex_accessor, texcoords, vertex_count * 2);
+    }
+
+    // Interleave vertex data
+    for (cgltf_size i = 0; i < vertex_count; ++i) {
+        // Position
+        mesh.vertices.push_back(positions[i * 3 + 0]);
+        mesh.vertices.push_back(positions[i * 3 + 1]);
+        mesh.vertices.push_back(positions[i * 3 + 2]);
+
+        // Texcoord (default to 0 if missing)
+        if (texcoords) {
+            mesh.vertices.push_back(texcoords[i * 2 + 0]);
+            mesh.vertices.push_back(texcoords[i * 2 + 1]);
+        } else {
+            mesh.vertices.push_back(0.0f);
+            mesh.vertices.push_back(0.0f);
+        }
+    }
+
+    // Extract indices
+    if (primitive->indices) {
+        const cgltf_size index_count = primitive->indices->count;
+        uint32_t* temp_indices = (uint32_t*)malloc(sizeof(uint32_t) * index_count);
+        cgltf_accessor_unpack_indices(primitive->indices, temp_indices, sizeof(uint32_t), index_count);
+
+        mesh.indices.reserve(index_count);
+        for (cgltf_size i = 0; i < index_count; ++i) {
+            mesh.indices.push_back(temp_indices[i]);
+        }
+        free(temp_indices);
+    }
+
+    // Cleanup
+    free(positions);
+    if (texcoords) free(texcoords);
+    cgltf_free(data);
+
+    return mesh;
 }
 
 void init() {
@@ -89,6 +227,8 @@ void init() {
     stbi_set_flip_vertically_on_load(true);
 
     sapp_show_mouse(false);
+
+    Mesh loaded_mesh = load_gltf("test.glb");;
 
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
@@ -329,6 +469,38 @@ void event(const sapp_event* e) {
         else if (state.fov >= 45.0f)
             state.fov = 45.0f;
     }
+}
+
+void fetch_callback(const sfetch_response_t* response) {
+    if (response->fetched) {
+        int img_width, img_height, num_channels;
+        const int desired_channels = 4;
+        stbi_uc* pixels = stbi_load_from_memory(
+            static_cast<const stbi_uc*>(response->data.ptr),
+            static_cast<int>(response->data.size),
+            &img_width, &img_height,
+            &num_channels, desired_channels);
+
+        if (pixels) {
+            // yay, memory safety!
+            sg_destroy_image(state.bind.images[texture_index]);
+
+            sg_image_desc img_desc = {};
+            img_desc.width = img_width;
+            img_desc.height = img_height;
+            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+            img_desc.data.subimage[0][0].ptr = pixels;
+            img_desc.data.subimage[0][0].size = img_width * img_height * 4;
+            state.bind.images[texture_index] = sg_make_image(&img_desc);
+
+            stbi_image_free(pixels);
+        }
+    } else if (response->failed) {
+        state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+        state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
+        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
+    }
+    texture_index += 1;
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
